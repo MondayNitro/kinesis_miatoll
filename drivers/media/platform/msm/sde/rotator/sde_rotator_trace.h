@@ -332,6 +332,6 @@ TRACE_EVENT(sde_rot_evtlog,
 #endif /* if !defined(TRACE_SDE_ROTATOR_H) ||
 	*		defined(TRACE_HEADER_MULTI_READ)
 	*/
-
+#undef TRACEPOINTS_ENABLED
 /* This part must be outside protection */
 #include <trace/define_trace.h>
