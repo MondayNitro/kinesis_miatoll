@@ -9,8 +9,8 @@
 struct task_struct;
 
 #ifdef CONFIG_DEBUG_KERNEL
-extern int debug_locks;
-extern int debug_locks_silent;
+extern int debug_locks __read_mostly;
+extern int debug_locks_silent __read_mostly;
 
 static inline int __debug_locks_off(void)
 {
