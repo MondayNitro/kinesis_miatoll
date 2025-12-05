@@ -6618,8 +6618,15 @@ int msm_comm_dqbuf_cache_operations(struct msm_vidc_inst *inst,
 			rc = msm_smem_cache_operations(mbuf->smem[i].dma_buf,
 					cache_op, offset, size);
 			if (rc)
-				print_vidc_buffer(VIDC_ERR,
-					"dqbuf cache ops failed", inst, mbuf);
+				dprintk_ratelimit(VIDC_ERR,
+					"dqbuf cache failed: %s idx %d fd %d op %d off %lu size %lu daddr %pad filled %u ref %d rc %d\n",
+					vb->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE ? "OUTPUT" : "CAPTURE",
+					vb->index, vb->planes[i].m.fd,
+					cache_op, (unsigned long)offset, (unsigned long)size,
+					&mbuf->smem[i].device_addr,
+					vb->planes[i].bytesused,
+					mbuf->smem[i].refcount,
+					rc);
 		}
 	}
 
