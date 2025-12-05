@@ -1969,6 +1969,8 @@ out_unlock:
 
 static void handle_bad_sector(struct bio *bio)
 {
+	return;
+/*
 	char b[BDEVNAME_SIZE];
 
 	printk(KERN_INFO "attempt to access beyond end of device\n");
@@ -1976,6 +1978,7 @@ static void handle_bad_sector(struct bio *bio)
 			bio_devname(bio, b), bio->bi_opf,
 			(unsigned long long)bio_end_sector(bio),
 			(long long)get_capacity(bio->bi_disk));
+*/
 }
 
 #ifdef CONFIG_FAIL_MAKE_REQUEST
