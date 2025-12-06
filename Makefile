@@ -1061,6 +1061,12 @@ KBUILD_CFLAGS	+= $(call cc-option,-fmacro-prefix-map=$(srctree)/=)
 # use the deterministic mode of AR if available
 KBUILD_ARFLAGS := $(call ar-option,D)
 
+# Clang-specific optimizations (target: Clang 21+)
+ifdef CONFIG_CC_IS_CLANG
+KBUILD_CFLAGS	+= $(call cc-option,-mllvm -enable-licm-vrp)
+KBUILD_CFLAGS	+= $(call cc-option,-mllvm -enable-dse-memoryssa)
+endif
+
 include scripts/Makefile.kasan
 include scripts/Makefile.extrawarn
 include scripts/Makefile.ubsan
