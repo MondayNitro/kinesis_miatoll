@@ -685,6 +685,10 @@ LD		:= $(LDGOLD)
 LDFLAGS		+= -plugin LLVMgold.so
 endif
 
+ifdef CONFIG_LD_IS_LLD
+LDFLAGS += -O2
+endif
+
 # use llvm-ar for building symbol tables from IR files, and llvm-dis instead
 # of objdump for processing symbol versions and exports
 ifneq ($(findstring llvm-ar,$(AR)),)
