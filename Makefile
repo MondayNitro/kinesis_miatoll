@@ -732,10 +732,6 @@ endif
 ifeq ($(cc-name),clang)
 KBUILD_CFLAGS	+= -mcpu=cortex-a55 -mtune=cortex-a55
 
-ifdef CONFIG_LTO_CLANG
-KBUILD_CFLAG	+= -fwhole-program-vtables
-endif
-
 ifdef CONFIG_LLVM_POLLY
 KBUILD_CFLAGS	+= -mllvm -polly \
 		   -mllvm -polly-run-inliner \
@@ -767,7 +763,6 @@ ifdef CONFIG_INLINE_OPTIMIZATION
 KBUILD_CFLAGS	+= -mllvm -inline-threshold=2000
 KBUILD_CFLAGS	+= -mllvm -inlinehint-threshold=3000
 KBUILD_CFLAGS   += -mllvm -unroll-threshold=1200
-KBUILD_LDFLAGS  += --plugin-opt=-import-instr-limit=40
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
@@ -947,7 +942,7 @@ lto-clang-flags += -fvisibility=default $(call cc-option, -fsplit-lto-unit)
 # Limit inlining across translation units to reduce binary size
 LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
 
-KBUILD_LDFLAGS += $(LD_FLAGS_LTO_CLANG)
+LDFLAGS += $(LD_FLAGS_LTO_CLANG)
 KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
 
 KBUILD_LDFLAGS_MODULE += -T scripts/module-lto.lds
