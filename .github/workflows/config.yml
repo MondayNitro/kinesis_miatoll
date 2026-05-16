@@ -1,0 +1,70 @@
+name: Generate Defconfig
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Repository to checkout"
+        required: true
+        default: MondayNitro/android_kernel_motorola_sm6375
+
+      source_branch:
+        description: "Branch to checkout"
+        required: true
+        default: lineage-23.0
+
+      defconfig:
+        description: "Defconfig path"
+        required: true
+        default: fogos_defconfig
+
+jobs:
+  generate-defconfig:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.inputs.source_repo }}
+          ref: ${{ github.event.inputs.source_branch }}
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison flex libssl-dev libelf-dev
+
+      - name: Fetch LLVM toolchain
+        run: |
+          mkdir -p toolchain
+          cd toolchain
+
+          wget -q \
+            https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.5-x86_64.tar.gz \
+            -O llvm.tar.gz
+
+          tar -axf llvm.tar.gz --strip-components=1
+          rm llvm.tar.gz
+
+      - name: Generate defconfig
+        run: |
+          export PATH="${PWD}/toolchain/bin:${PATH}"
+
+          rm -rf out
+
+          make \
+            O=out \
+            ARCH=arm64 \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ${{ github.event.inputs.defconfig }}
+
+      - name: Upload generated .config
+        uses: actions/upload-artifact@v6
+        with:
+          name: config-${{ github.run_number }}
+          archive: false
+          path: out/.config
