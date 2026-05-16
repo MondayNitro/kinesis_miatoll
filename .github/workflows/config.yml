@@ -49,23 +49,28 @@ jobs:
           tar -axf llvm.tar.gz --strip-components=1
           rm llvm.tar.gz
 
-      - name: Generate defconfig
+      - name: Generate full and mini defconfig
         run: |
           export PATH="${PWD}/toolchain/bin:${PATH}"
 
+          ARGS="
+          ARCH=arm64
+          LLVM=1
+          LLVM_IAS=1
+          "
+
           rm -rf out
 
-          make \
-            O=out \
-            ARCH=arm64 \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            ${{ github.event.inputs.defconfig }}
+          make ${ARGS} O=out ${{ github.event.inputs.defconfig }}
+          make ${ARGS} O=out savedefconfig
 
-      - name: Upload generated .config
+          mv out/.config full_config
+          mv out/defconfig mini_config
+          
+      - name: Upload full config
         uses: actions/upload-artifact@v7
         with:
           name: config-${{ github.run_number }}
-          include-hidden-files: true
-          archive: false
-          path: out/.config
+          path: |
+            full_config
+            mini_config
