@@ -11,7 +11,7 @@ on:
       source_branch:
         description: "Branch to checkout"
         required: true
-        default: lineage-23.0
+        default: lineage-23.2
 
       defconfig:
         description: "Defconfig path"
@@ -63,8 +63,9 @@ jobs:
             ${{ github.event.inputs.defconfig }}
 
       - name: Upload generated .config
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: config-${{ github.run_number }}
+          include-hidden-files: true
           archive: false
           path: out/.config
