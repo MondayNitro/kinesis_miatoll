@@ -44,7 +44,7 @@ jobs:
           mkdir -p toolchain
           cd toolchain
 
-          LLVM_URL="https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.7-x86_64.tar.gz"
+          LLVM_URL="https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.8-x86_64.tar.gz"
 
           echo "Downloading LLVM toolchain:"
           echo "$LLVM_URL"
