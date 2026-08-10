@@ -44,14 +44,14 @@ jobs:
           mkdir -p toolchain
           cd toolchain
 
-          LLVM_URL="https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.8-x86_64.tar.gz"
+          LLVM_URL="https://www.kernel.org/pub/tools/llvm/files/llvm-23.1.0-rc2-x86_64.tar.xz"
 
           echo "Downloading LLVM toolchain:"
           echo "$LLVM_URL"
 
-          wget -q "$LLVM_URL" -O llvm.tar.gz
-          tar -axf llvm.tar.gz --strip-components=1
-          rm llvm.tar.gz
+          wget -q "$LLVM_URL" -O llvm.tar.xz
+          tar -axf llvm.tar.xz --strip-components=1
+          rm llvm.tar.xz
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
@@ -64,14 +64,14 @@ jobs:
           ./build.sh
 
       - name: Upload kernel zip
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: kernel-${{ github.run_number }}
           path: AnyKernel3/*
 
       - name: Upload build log
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: build-log-${{ github.run_number }}
           path: |
