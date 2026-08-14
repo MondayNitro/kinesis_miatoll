@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ github.event.inputs.source_repo }}
           ref: ${{ github.event.inputs.source_branch }}
@@ -44,7 +44,7 @@ jobs:
           mkdir -p toolchain
           cd toolchain
 
-          LLVM_URL="https://www.kernel.org/pub/tools/llvm/files/llvm-23.1.0-rc2-x86_64.tar.xz"
+          LLVM_URL="https://www.kernel.org/pub/tools/llvm/files/llvm-23.1.0-rc3-x86_64.tar.xz"
 
           echo "Downloading LLVM toolchain:"
           echo "$LLVM_URL"
