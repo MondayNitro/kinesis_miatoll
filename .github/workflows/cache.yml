@@ -1,0 +1,35 @@
+name: Cache LLVM Toolchain
+
+on:
+  workflow_dispatch:
+    inputs:
+      toolchain_url:
+        required: true
+        type: string
+        default: https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.8-x86_64.tar.xz
+      toolchain_dir:
+        required: false
+        type: string
+        default: toolchain
+      cache_key:
+        required: true
+        type: string
+
+jobs:
+  cache-toolchain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v6
+        id: cache
+        with:
+          path: ${{ inputs.toolchain_dir }}
+          key: ${{ inputs.cache_key }}
+
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          rm -rf "${{ inputs.toolchain_dir }}"
+          mkdir -p "${{ inputs.toolchain_dir }}"
+          cd "${{ inputs.toolchain_dir }}"
+          wget -q "${{ inputs.toolchain_url }}" -O toolchain.tar.xz
+          tar -axf toolchain.tar.xz --strip-components=1
+          rm toolchain.tar.xz
