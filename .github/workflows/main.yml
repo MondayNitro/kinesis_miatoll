@@ -1,5 +1,4 @@
 name: Slim LLVM
-
 on:
   workflow_dispatch:
     inputs:
@@ -11,12 +10,10 @@ on:
         description: "Branch to checkout"
         required: true
         default: lineage-23.0
-
 jobs:
   build:
     runs-on: ubuntu-latest
     name: "Build for fogos"
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
@@ -38,20 +35,12 @@ jobs:
             bison flex libssl-dev libarchive-tools \
             bc libelf-dev dwarves curl
 
-      - name: Fetch toolchain
-        run: |
-          rm -rf toolchain
-          mkdir -p toolchain
-          cd toolchain
-
-          LLVM_URL="https://www.kernel.org/pub/tools/llvm/files/llvm-23.1.0-rc3-x86_64.tar.xz"
-
-          echo "Downloading LLVM toolchain:"
-          echo "$LLVM_URL"
-
-          wget -q "$LLVM_URL" -O llvm.tar.xz
-          tar -axf llvm.tar.xz --strip-components=1
-          rm llvm.tar.xz
+      - name: Restore LLVM toolchain from cache
+        uses: actions/cache/restore@v6
+        with:
+          path: toolchain
+          key: llvm
+          fail-on-cache-miss: true
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
