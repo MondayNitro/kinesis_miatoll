@@ -6,7 +6,7 @@ on:
       toolchain_url:
         required: true
         type: string
-        default: https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.8-x86_64.tar.xz
+        default: https://www.kernel.org/pub/tools/llvm/files/llvm-23.1.0-rc3-x86_64.tar.xz
       toolchain_dir:
         required: false
         type: string
