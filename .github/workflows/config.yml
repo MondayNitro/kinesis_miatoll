@@ -43,7 +43,7 @@ jobs:
           cd toolchain
 
           wget -q \
-            https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.5-x86_64.tar.gz \
+            https://www.kernel.org/pub/tools/llvm/files/llvm-22.1.8-x86_64.tar.gz \
             -O llvm.tar.gz
 
           tar -axf llvm.tar.gz --strip-components=1
