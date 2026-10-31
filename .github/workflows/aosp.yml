@@ -1,0 +1,81 @@
+name: Slim LLVM
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Repository to checkout"
+        required: true
+        default: MondayNitro/android_kernel_motorola_sm6375
+      source_branch:
+        description: "Branch to checkout"
+        required: true
+        default: lineage-23.0
+      aosp_clang_version:
+        description: "AOSP clang version"
+        required: true
+        default: clang-r614150
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: "Build for fogos"
+    env:
+      AOSP_CLANG_VERSION: ${{ github.event.inputs.aosp_clang_version }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.inputs.source_repo }}
+          ref: ${{ github.event.inputs.source_branch }}
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 1
+
+      - name: Set Timezone
+        uses: szenius/set-timezone@v2.0
+        with:
+          timezoneLinux: "Asia/Kolkata"
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bison flex libssl-dev libarchive-tools \
+            bc libelf-dev dwarves curl
+
+      - name: Download AOSP clang
+        run: |
+          if [[ ! "$AOSP_CLANG_VERSION" =~ ^clang-r[0-9]+[a-z]?$ ]]; then
+            echo "Invalid AOSP clang version: $AOSP_CLANG_VERSION"
+            exit 1
+          fi
+          URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/${AOSP_CLANG_VERSION}.tar.gz"
+          echo "Downloading $URL"
+          mkdir -p toolchain
+          curl -fL --retry 5 --retry-delay 5 "$URL" | tar -xz -C toolchain
+
+      - name: Show clang version
+        run: toolchain/bin/clang --version
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 30
+
+      - name: Build kernel
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Upload kernel zip
+        uses: actions/upload-artifact@v7
+        with:
+          name: kernel-${{ github.run_number }}
+          path: AnyKernel3/*
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log-${{ github.run_number }}
+          path: |
+            build.log
+            kernel_config
