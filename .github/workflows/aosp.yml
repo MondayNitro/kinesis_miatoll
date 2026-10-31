@@ -1,4 +1,4 @@
-name: Slim LLVM
+name: AOSP Clang
 on:
   workflow_dispatch:
     inputs:
