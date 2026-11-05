@@ -1,0 +1,290 @@
+name: FCM kernel config check
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Kernel repo (owner/name)
+        default: 'MondayNitro/android_kernel_motorola_sm6375'
+      branch:
+        description: Kernel branch, tag or SHA
+        default: 'lineage-23.2'
+      defconfig:
+        description: Defconfig path
+        required: true
+        default: fogos_defconfig
+      release:
+        description: current, all, or a kernel/configs release dir (t = FCM 7)
+        default: current
+      non_debuggable:
+        description: Also require non_debuggable.config (user builds)
+        type: boolean
+        default: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout kernel
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
+          token: ${{ secrets.GH_TOKEN }}
+          path: kernel
+          fetch-depth: 1
+
+      - name: Host dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            bc bison flex libssl-dev libelf-dev
+
+      - name: Restore LLVM toolchain from cache
+        uses: actions/cache/restore@v6
+        with:
+          path: toolchain
+          key: llvm
+          fail-on-cache-miss: true
+
+      - name: Add toolchain to PATH
+        run: |
+          tc="$GITHUB_WORKSPACE/toolchain/bin"
+          if [ ! -x "$tc/clang" ]; then
+            echo "::error::$tc/clang not found, cache layout differs"
+            ls -la "$GITHUB_WORKSPACE/toolchain"
+            exit 1
+          fi
+          echo "$tc" >> "$GITHUB_PATH"
+          "$tc/clang" --version | head -n1
+
+      - name: Fetch kernel/configs
+        run: git clone --quiet https://android.googlesource.com/kernel/configs "$RUNNER_TEMP/kconfigs"
+
+      - name: Generate .config
+        id: cfg
+        working-directory: kernel
+        env:
+          DEFCONFIG: ${{ inputs.defconfig }}
+        run: |
+          set -euo pipefail
+          case "$DEFCONFIG" in
+            */*) src="$DEFCONFIG" ;;
+            *)   src="arch/arm64/configs/$DEFCONFIG" ;;
+          esac
+          [ -f "$src" ] || { echo "::error::$src not found"; exit 1; }
+          cp "$src" arch/arm64/configs/_fcm_check_defconfig
+
+          args=(O=out ARCH=arm64 CC=clang
+                CROSS_COMPILE=aarch64-linux-gnu- CLANG_TRIPLE=aarch64-linux-gnu-)
+          for kv in LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy \
+                    OBJDUMP=llvm-objdump STRIP=llvm-strip; do
+            if command -v "${kv#*=}" >/dev/null; then args+=("$kv"); fi
+          done
+
+          make "${args[@]}" _fcm_check_defconfig
+          rm -f arch/arm64/configs/_fcm_check_defconfig
+          echo "kver=$(make -s kernelversion)" >> "$GITHUB_OUTPUT"
+
+      - name: Check against kernel/configs
+        env:
+          CFG_REPO: ${{ runner.temp }}/kconfigs
+          KERNEL_DIR: ${{ github.workspace }}/kernel
+          RELEASE: ${{ inputs.release }}
+          NON_DEBUGGABLE: ${{ inputs.non_debuggable }}
+          DEFCONFIG: ${{ inputs.defconfig }}
+          KVER: ${{ steps.cfg.outputs.kver }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          CFG = Path(os.environ["CFG_REPO"])
+          KERNEL = Path(os.environ["KERNEL_DIR"])
+          ARCH = "arm64"
+          WANT = (os.environ["RELEASE"] or "current").strip()
+          NONDEBUG = os.environ["NON_DEBUGGABLE"] == "true"
+
+          m = re.match(r"(\d+)\.(\d+)\.(\d+)", os.environ["KVER"])
+          if not m:
+              sys.exit(f"cannot parse kernel version {os.environ['KVER']!r}")
+          KVER = tuple(int(x) for x in m.groups())
+          SUB = f"android-{KVER[0]}.{KVER[1]}"
+
+
+          def die(msg):
+              print(f"::error::{msg}")
+              sys.exit(2)
+
+
+          # --- resolved .config -------------------------------------------------
+          conf = {}
+          for line in (KERNEL / "out" / ".config").read_text().splitlines():
+              mt = re.match(r"(CONFIG_\w+)=(.*)$", line)
+              if mt:
+                  conf[mt[1]] = mt[2].strip()
+                  continue
+              mt = re.match(r"#\s*(CONFIG_\w+) is not set", line)
+              if mt:
+                  conf[mt[1]] = "n"
+
+          # every symbol the tree defines, to tell "needs backport" from "just disabled"
+          symbols = set()
+          for p in KERNEL.rglob("Kconfig*"):
+              if p.is_file() and (KERNEL / "out") not in p.parents:
+                  symbols.update(re.findall(r"(?m)^\s*(?:menu)?config\s+(\w+)",
+                                            p.read_text(errors="ignore")))
+
+
+          # --- pick which kernel/configs release(s) to check --------------------
+          def added_time(path):
+              out = subprocess.run(
+                  ["git", "-C", str(CFG), "log", "--diff-filter=A", "--format=%ct", "--", path],
+                  capture_output=True, text=True).stdout.split()
+              return int(out[-1]) if out else 0
+
+
+          releases = {}
+          for d in CFG.iterdir():
+              if d.is_dir() and not d.name.startswith((".", "android-")) and (d / SUB).is_dir():
+                  releases[d.name] = d / SUB
+          ordered = sorted(releases, key=lambda r: added_time(f"{r}/{SUB}/android-base.config"))
+          top = CFG / SUB
+
+          todo = []
+          if WANT == "all":
+              todo = [(r, releases[r]) for r in ordered]
+              if top.is_dir():
+                  todo.append(("current (top-level)", top))
+          elif WANT == "current":
+              if top.is_dir():
+                  todo = [("current (top-level)", top)]
+              elif ordered:
+                  r = ordered[-1]
+                  todo = [(f"{r} (newest release, no top-level {SUB})", releases[r])]
+          elif WANT in releases:
+              todo = [(WANT, releases[WANT])]
+          else:
+              die(f"release {WANT!r} has no {SUB}; available: {', '.join(ordered) or 'none'}")
+          if not todo:
+              die(f"kernel/configs has no requirements for {SUB}")
+
+
+          # --- matching ---------------------------------------------------------
+          def unq(s):
+              return s.strip().strip('"')
+
+
+          def satisfied(typ, want, have):
+              if typ in ("bool", "tristate"):
+                  return (have or "n") == want
+              if have is None:
+                  return False
+              if typ == "string":
+                  return unq(have) == unq(want)
+              try:
+                  if typ == "int":
+                      return int(have, 0) == int(want, 0)
+                  if typ == "range":
+                      lo, hi = (int(x, 0) for x in want.split("-"))
+                      return lo <= int(have, 0) <= hi
+              except ValueError:
+                  return False
+              return True  # unknown type: don't flag
+
+
+          def parse_fragment(path):
+              for line in path.read_text().splitlines():
+                  line = line.strip()
+                  mt = re.match(r"(CONFIG_\w+)=(.*)$", line)
+                  if mt:
+                      val = mt[2].strip()
+                      typ = "tristate" if val in ("y", "m", "n") else "string" if val.startswith('"') else "int"
+                      yield mt[1], typ, val
+                      continue
+                  mt = re.match(r"#\s*(CONFIG_\w+) is not set", line)
+                  if mt:
+                      yield mt[1], "tristate", "n"
+
+
+          def items(el):
+              for c in el.findall("config"):
+                  v = c.find("value")
+                  yield c.findtext("key").strip(), v.get("type"), (v.text or "").strip()
+
+
+          def check(d):
+              fails = []
+
+              def need(key, typ, val, src):
+                  have = conf.get(key)
+                  if satisfied(typ, val, have):
+                      return
+                  if have in (None, "n") and val != "n":
+                      why = ("symbol not in this tree (needs backport)" if key[7:] not in symbols
+                             else "in tree but not enabled (defconfig or Kconfig dependency)")
+                      fails.append((key, val, "unset", src, f"Missing config: {why}"))
+                  else:
+                      fails.append((key, val, have if have is not None else "unset", src, "Value mismatch"))
+
+              frags = [d / "android-base.config", d / f"android-base-{ARCH}.config"]
+              if NONDEBUG:
+                  frags.append(d / "non_debuggable.config")
+              for f in frags:
+                  if f.exists():
+                      for key, typ, val in parse_fragment(f):
+                          need(key, typ, val, f.name)
+
+              xf = d / "android-base-conditional.xml"
+              if xf.exists():
+                  text = re.sub(r"<\?xml[^>]*\?>", "", xf.read_text())
+                  root = ET.fromstring(f"<root>{text}</root>")
+                  for k in root.iter("kernel"):
+                      lts = k.get("minlts")
+                      if lts and KVER < tuple(int(x) for x in lts.split(".")[:3]):
+                          fails.append(("kernel version", f">= {lts}", os.environ["KVER"],
+                                        xf.name, "Kernel below minimum LTS"))
+                  for g in root.iter("group"):
+                      conds = g.find("conditions")
+                      if conds is not None and not all(
+                              satisfied(t, v, conf.get(k)) for k, t, v in items(conds)):
+                          continue
+                      for key, typ, val in items(g):
+                          need(key, typ, val, xf.name)
+              return fails
+
+
+          # --- report -----------------------------------------------------------
+          rows, total = [], 0
+          for label, d in todo:
+              fails = check(d)
+              total += len(fails)
+              rows.append((label, fails))
+              print(f"\n== {label}: {'PASS' if not fails else str(len(fails)) + ' problem(s)'} ==")
+              for key, exp, got, src, why in fails:
+                  print(f"  {why}: {key} expected {exp}, found {got}  [{src}]")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write(f"### FCM check: `{os.environ['DEFCONFIG']}` (kernel {os.environ['KVER']})\n\n")
+              s.write("| Release | Result |\n|---|---|\n")
+              for label, fails in rows:
+                  res = "pass" if not fails else f"{len(fails)} problem(s)"
+                  s.write(f"| {label} | {res} |\n")
+              for label, fails in rows:
+                  if fails:
+                      s.write(f"\n**{label}**\n\n| Config | Expected | Found | Source | Note |\n|---|---|---|---|---|\n")
+                      for key, exp, got, src, why in fails:
+                          s.write(f"| `{key}` | `{exp}` | `{got}` | {src} | {why} |\n")
+
+          if total and WANT != "all":
+              die(f"{total} FCM requirement(s) not met")
+          PY
+
+      - name: Upload resolved .config
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resolved-config
+          path: kernel/out/.config
+          if-no-files-found: ignore
